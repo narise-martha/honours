@@ -1,6 +1,8 @@
 #include "IO/ChronoTimer.hpp"
 #include "IO/FRW_fileReadWrite.hpp" //for 'ExtraPotential'
 #include "IO/InputBlock.hpp"
+#include "Kionisation/StandardHaloModel.hpp"
+#include "Kionisation/radial_function.hpp"
 #include "Maths/Grid.hpp"
 #include "Maths/Interpolator.hpp" //for 'ExtraPotential'
 #include "Modules/modules_list.hpp"
@@ -700,4 +702,90 @@ void ampsci(const IO::InputBlock &input) {
 
   // run each of the modules with the calculated wavefunctions
   Module::runModules(input, wf);
+
+  //----------------------------------------------------------------------------
+
+  // Calculating form factor for the absorption of dark photon
+
+  //----------------------------------------------------------------------------
+
+  // Defining constants
+
+  // const auto mass_in_MeV = 0.2; // 1 eV = 1.0e-6 MeV, 1 keV = 1.0e-3
+  double min_mass_MeV = 1.0e-3; // 1 keV
+  double max_mass_MeV = 0.1;    // 0.1 MeV
+  int no_masses = 10;
+  double dm = (max_mass_MeV - min_mass_MeV) / no_masses;
+
+  const auto ms_in_MeV =
+      qip::uniform_range(min_mass_MeV, max_mass_MeV, no_masses);
+
+  // Velocity of dark matter/momentum
+  double min_v_z = 0.5e-3;
+  double max_v_z = 1.5e-3;
+  int no_m = 10;
+  const auto v_z_list = qip::uniform_range(min_v_z, max_v_z, no_m);
+  const auto dv = v_z_list.at(1) - v_z_list.at(0);
+
+  double K;
+  double rate;
+
+  // Output file
+  std::ofstream output("test.txt");
+
+  //----------------------------------------------------------------------------
+  // Looping over masses
+  for (auto mass_in_MeV : ms_in_MeV) {
+    double mc2_z =
+        mass_in_MeV * 1e6 / PhysConst::Hartree_eV; // Energy in Hartree
+
+    // double v_z = pow(10,-3); // Average velocity of DM
+
+    const auto &grid = wf.grid();
+    using namespace qip::overloads;
+
+    std::cout << "Mass: " << mass_in_MeV << "/" << ms_in_MeV.back() << "\n";
+
+    //----------------------------------------------------------------------------
+
+    // loop over v
+    double rate_m = 0.0;
+    for (auto v_z : v_z_list) {
+
+      std::cout << "v: " << v_z << "/" << v_z_list.back() << "             \r"
+                << std::flush;
+
+      double q = mc2_z * v_z / PhysConst::c; // Momentum in atomic units
+
+      //----------------------------------------------------------------------------
+      // Summing over L
+      K = 0.0;
+      rate = 0.0;
+      for (int L = 0; L < 5; L++) {
+
+        // Generate Bessel functions for L
+        const auto jL = SphericalBessel::fillBesselVec(L, grid.r() * q);
+
+        // Sum over initial state Fa in the core
+        // double K = 0.0;
+        for (auto &Fa : wf.core()) {
+          K += K_total(wf.vHF(), Fa, mc2_z, L, jL);
+        }
+        //std::cout<<"L = "<< L << " K = " <<K<<"\n";
+      } // End of L loop
+
+      //----------------------------------------------------------------------------
+
+      // Integral over v
+      const auto vz_kms = v_z * PhysConst::c_SI / 1000;
+      // Sum over to integrate, just multiply by dv
+      rate_m += K * vz_kms;
+
+      //----------------------------------------------------------------------------
+
+      //std::cout << "Summing over L: K = " << K << " for dark photon mass "<<mass_in_MeV<< " MeV"<<"\n";
+      output << mass_in_MeV << " " << v_z << " " << K << "\n";
+    } // End loop over v
+    std::cout << "\n";
+  } // End loop over mass
 }
