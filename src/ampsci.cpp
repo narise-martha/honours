@@ -777,6 +777,7 @@ void ampsci(const IO::InputBlock &input) {
       //----------------------------------------------------------------------------
 
       // Integral over v
+      // REMEMBER TO DO INTEGRAL
       const auto vz_kms = v_z * PhysConst::c_SI / 1000;
       // Sum over to integrate, just multiply by dv
       rate_m += K * vz_kms;
