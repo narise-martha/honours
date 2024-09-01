@@ -72,15 +72,27 @@ double K_single(const DiracSpinor &Fa, const DiracSpinor &Fb, int L,
   const auto &grid = Fa.grid();
   using namespace qip::overloads;
 
-  // Sphereical bessel function. Need to take this out of the function
-  // To reduce computation time. Generate all the Bessel functions outside of the function,
-  // and then feed them into the function as an imput.
-  // const auto jL = SphericalBessel::fillBesselVec(L, grid.r()*q);
-
   // Taking absolute value and squared
-  return abs(pow(C1 * radial_int(Fb.f(), Fa.g(), jL, grid) -
+  /*return abs(pow(C1 * radial_int(Fb.f(), Fa.g(), jL, grid) -
                      C2 * radial_int(Fb.g(), Fa.f(), jL, grid),
-                 2));
+                 2));*/
+
+  // Extra 3j symbol from equation of rate. Absorbing it into the form factor
+  double extra_3j = Angular::threej_2(twoj_b, 2 * L, twoj_a, -1, 0, 1);
+
+  // If extra 3j symbol is zero => return 0 to avoid nan.
+  if (extra_3j == 0) {
+    return 0;
+  }
+
+  else {
+
+    // Taking absolute value and squared
+    return pow(extra_3j, -2) *
+           abs(pow(C1 * radial_int(Fb.f(), Fa.g(), jL, grid) -
+                       C2 * radial_int(Fb.g(), Fa.f(), jL, grid),
+                   2));
+  }
 }
 
 // This function calculates the form factor K, summing over all the final states Fb
@@ -113,17 +125,4 @@ double K_total(const HF::HartreeFock *vHF, const DiracSpinor &Fa, double mc2_z,
     //std::cout << " K = " << K_tot <<"\n";
   }
   return K_tot;
-}
-
-double rate(double cross_sec, double v_z, Grid grid, const HF::HartreeFock *vHF,
-            const DiracSpinor &Fa, double mass_z, int L, const auto jL) {
-  Astro::StandardHaloModel f_dist();
-  double sv = NumCalc::integrate(grid.du(), 0, 0, grid.drdu(),
-                                 K_total(vHF, Fa, mass_z, L, jL), v_z, f_dist);
-
-  // Constants
-  // Should be n* (4\pi \hbar)/(m_e^2 \omega) (\epsilon e)^2/(\hbar c)
-  double C = 1; // Setting this for now
-  // Still need to sum over everything here I think
-  return C * sv;
 }

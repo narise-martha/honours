@@ -713,25 +713,24 @@ void ampsci(const IO::InputBlock &input) {
 
   // const auto mass_in_MeV = 0.2; // 1 eV = 1.0e-6 MeV, 1 keV = 1.0e-3
   double min_mass_MeV = 1.0e-3; // 1 keV
-  double max_mass_MeV = 0.1;    // 0.1 MeV
-  int no_masses = 10;
+  double max_mass_MeV = 0.1;    // Works up to 0.1 MeV
+  int no_masses = 30;
   double dm = (max_mass_MeV - min_mass_MeV) / no_masses;
 
   const auto ms_in_MeV =
-      qip::uniform_range(min_mass_MeV, max_mass_MeV, no_masses);
+      qip::logarithmic_range(min_mass_MeV, max_mass_MeV, no_masses);
 
   // Velocity of dark matter/momentum
   double min_v_z = 0.5e-3;
   double max_v_z = 1.5e-3;
-  int no_m = 10;
-  const auto v_z_list = qip::uniform_range(min_v_z, max_v_z, no_m);
+  int no_v = 20;
+  const auto v_z_list = qip::uniform_range(min_v_z, max_v_z, no_v);
   const auto dv = v_z_list.at(1) - v_z_list.at(0);
 
-  double K;
-  double rate;
+  Astro::StandardHaloModel f_dist;
 
   // Output file
-  std::ofstream output("test.txt");
+  std::ofstream output("fixed_parallelised_code.txt");
 
   //----------------------------------------------------------------------------
   // Looping over masses
@@ -744,23 +743,26 @@ void ampsci(const IO::InputBlock &input) {
     const auto &grid = wf.grid();
     using namespace qip::overloads;
 
-    std::cout << "Mass: " << mass_in_MeV << "/" << ms_in_MeV.back() << "\n";
+    //std::cout << "Mass: " << mass_in_MeV << "/" << ms_in_MeV.back() << "\n";
 
     //----------------------------------------------------------------------------
 
     // loop over v
-    double rate_m = 0.0;
-    for (auto v_z : v_z_list) {
+    double rate_m = 0.0; // Rate as a function of mass
+// for (auto v_z : v_z_list) {
+#pragma omp parallel for reduction(+ : rate_m)
+    for (std::size_t i = 0; i < v_z_list.size(); ++i) {
+      auto v_z = v_z_list[i];
 
-      std::cout << "v: " << v_z << "/" << v_z_list.back() << "             \r"
-                << std::flush;
+      // std::cout << "v: " << v_z << "/" << v_z_list.back() << "             \r"
+      //           << std::flush;
 
       double q = mc2_z * v_z / PhysConst::c; // Momentum in atomic units
 
       //----------------------------------------------------------------------------
       // Summing over L
-      K = 0.0;
-      rate = 0.0;
+      double K = 0.0;
+      // #pragma omp parallel for reduction(+:K)
       for (int L = 0; L < 5; L++) {
 
         // Generate Bessel functions for L
@@ -777,16 +779,14 @@ void ampsci(const IO::InputBlock &input) {
       //----------------------------------------------------------------------------
 
       // Integral over v
-      // REMEMBER TO DO INTEGRAL
-      const auto vz_kms = v_z * PhysConst::c_SI / 1000;
-      // Sum over to integrate, just multiply by dv
-      rate_m += K * vz_kms;
+      double vz_kms = v_z * PhysConst::c_SI / 1000;
+      rate_m += K * vz_kms * f_dist.f(vz_kms) * dv;
 
       //----------------------------------------------------------------------------
 
       //std::cout << "Summing over L: K = " << K << " for dark photon mass "<<mass_in_MeV<< " MeV"<<"\n";
-      output << mass_in_MeV << " " << v_z << " " << K << "\n";
     } // End loop over v
-    std::cout << "\n";
+    output << mass_in_MeV << " " << rate_m << "\n";
+    //std::cout << "\n";
   } // End loop over mass
 }
